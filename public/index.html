@@ -1,340 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>PRISMA Live Monitor</title>
+
+<style>
+:root {
+  --bg:#0b0c10;
+  --panel:#14161c;
+  --line:#242a35;
+  --text:#f1f5f9;
+  --muted:#94a3b8;
+  --green:#22c55e;
+  --red:#ef4444;
+  --blue:#38bdf8;
+}
+body {
+  margin:0;
+  background:var(--bg);
+  color:var(--text);
+  font-family:system-ui;
+}
+.wrap {
+  max-width:900px;
+  margin:auto;
+  padding:20px;
+}
+.card {
+  background:var(--panel);
+  border:1px solid var(--line);
+  border-radius:12px;
+  padding:16px;
+  margin-bottom:12px;
+}
+button {
+  background:var(--panel);
+  border:1px solid var(--line);
+  color:white;
+  padding:10px;
+  border-radius:8px;
+  cursor:pointer;
+}
+.toast {
+  position:fixed;
+  right:20px;
+  top:20px;
+  background:#1b1f27;
+  padding:12px;
+  border-radius:10px;
+}
+</style>
+</head>
+
+<body>
+<div class="wrap">
+
+<h1>PRISMA Live Monitor</h1>
+
+<div class="card">
+  <button id="notifyBtn">Enable Notifications</button>
+</div>
+
+<div id="list"></div>
+
+</div>
+
+<div id="toasts"></div>
+
 <script>
 let trades = [];
-let activeFilter = 'all';
-let muted = false;
-let pollingStarted = false;
-let initialLoadComplete = false;
 let knownIds = new Set();
+let initialLoad = false;
 
 const API_URL = '/api/prisma/trades';
 const VAPID_PUBLIC_KEY = 'PASTE_YOUR_PUBLIC_KEY_HERE';
 
-const fmtMoney = (n) => {
-  const num = Number(n);
-  if (!Number.isFinite(num)) return '—';
-  return num < 0 ? `-$${Math.abs(num).toFixed(2)}` : `$${num.toFixed(2)}`;
-};
+function toast(text) {
+  const el = document.createElement('div');
+  el.className = 'toast';
+  el.innerText = text;
+  document.body.appendChild(el);
+  setTimeout(()=>el.remove(),4000);
 
-const fmtPctSigned = (n) => {
-  const num = Number(n);
-  if (!Number.isFinite(num)) return '—';
-  return `${num > 0 ? '+' : ''}${num.toFixed(2)}%`;
-};
-
-const esc = (s) =>
-  String(s ?? '')
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;');
-
-function statusClass(s) {
-  const v = String(s || '').toUpperCase();
-  if (v.startsWith('WIN')) return 'win';
-  if (v.startsWith('LOSS')) return 'loss';
-  if (v.includes('HOLD')) return 'hold';
-  return 'open';
-}
-
-function computeSummary() {
-  const total = trades.length;
-  const wins = trades.filter(t => statusClass(t.status) === 'win').length;
-  const losses = trades.filter(t => statusClass(t.status) === 'loss').length;
-  const open = trades.filter(t => {
-    const st = statusClass(t.status);
-    return st === 'open' || st === 'hold';
-  }).length;
-  const totalPnl = trades.reduce((sum, t) => sum + Number(t.profitDollars || 0), 0);
-  return { total, wins, losses, open, totalPnl };
-}
-
-function updateHeader() {
-  const summary = computeSummary();
-  document.getElementById('total').textContent = summary.total;
-  document.getElementById('wins').textContent = summary.wins;
-  document.getElementById('losses').textContent = summary.losses;
-  document.getElementById('open').textContent = summary.open;
-
-  const pnlEl = document.getElementById('pnl');
-  pnlEl.textContent = fmtMoney(summary.totalPnl);
-  pnlEl.className = 'value';
-  if (summary.totalPnl > 0) pnlEl.classList.add('green');
-  else if (summary.totalPnl < 0) pnlEl.classList.add('red');
-}
-
-function filteredTrades() {
-  const q = document.getElementById('filterInput').value.trim().toLowerCase();
-  return trades.filter(t => {
-    const st = statusClass(t.status);
-    const passFilter = activeFilter === 'all' || st === activeFilter;
-    const hay = [
-      t.symbol,
-      t.side,
-      t.strike,
-      t.expiration,
-      t.entryPrice,
-      t.status,
-      t.profitDollars,
-      t.profitPercentage,
-      t.highestPrice
-    ].join(' ').toLowerCase();
-    const passQuery = !q || hay.includes(q);
-    return passFilter && passQuery;
-  });
+  if (Notification.permission === 'granted') {
+    new Notification(text);
+  }
 }
 
 function render() {
   const list = document.getElementById('list');
-  const rows = filteredTrades();
-
-  if (!rows.length) {
-    list.innerHTML = `<div class="empty">No trades match the current filter.</div>`;
-    return;
-  }
-
-  list.innerHTML = rows.map(t => {
-    const st = statusClass(t.status);
-    const pnlDollars = Number(t.profitDollars || 0);
-    const pnlPct = Number(t.profitPercentage || 0);
-    const maxOpp = t.highestPrice;
-
-    return `
-      <div class="trade ${st}">
-        <div class="head">
-          <div>
-            <div class="sym">
-              ${esc(t.symbol)}
-              <span class="badge ${String(t.side || '').toUpperCase() === 'CALL' ? 'call' : 'put'}">${esc(t.side)}</span>
-            </div>
-          </div>
-          <div class="status ${st}">${esc(t.status || 'open')}</div>
-        </div>
-
-        <div class="details">
-          <div>
-            <div class="k">P&amp;L $</div>
-            <div class="v big pnl ${pnlDollars >= 0 ? 'pos' : 'neg'}">${fmtMoney(pnlDollars)}</div>
-          </div>
-          <div>
-            <div class="k">P&amp;L %</div>
-            <div class="v big pnl ${pnlPct >= 0 ? 'pos' : 'neg'}">${fmtPctSigned(pnlPct)}</div>
-          </div>
-          <div>
-            <div class="k">Max Opp.</div>
-            <div class="v big">${maxOpp == null ? '—' : fmtMoney(maxOpp)}</div>
-          </div>
-          <div>
-            <div class="k">Entry Price</div>
-            <div class="v big">${fmtMoney(t.entryPrice)}</div>
-          </div>
-        </div>
-
-        <div class="details" style="margin-top:10px;">
-          <div>
-            <div class="k">Stock</div>
-            <div class="v big">${esc(t.symbol || '—')}</div>
-          </div>
-          <div>
-            <div class="k">Expiration</div>
-            <div class="v big">${esc(t.expiration || '—')}</div>
-          </div>
-          <div>
-            <div class="k">Strike</div>
-            <div class="v big">${fmtMoney(t.strike)}</div>
-          </div>
-          <div></div>
-        </div>
-
-        <div class="foot">
-          <div>Created: ${esc(t.createdAt ? new Date(t.createdAt).toLocaleString() : '—')}</div>
-          <div>Updated: ${esc(t.updatedAt ? new Date(t.updatedAt).toLocaleString() : '—')}</div>
-        </div>
-      </div>
-    `;
-  }).join('');
-}
-
-function toast(title, body, sub) {
-  if (muted) return;
-
-  const el = document.createElement('div');
-  el.className = 'toast';
-  el.innerHTML = `
-    <div class="t1">${esc(title)}</div>
-    <div class="t2">${esc(body)}</div>
-    <div class="t3">${esc(sub || '')}</div>
-  `;
-  document.getElementById('toasts').prepend(el);
-
-  setTimeout(() => {
-    el.style.opacity = '0';
-    el.style.transform = 'translateX(16px)';
-    el.style.transition = 'all .25s ease';
-    setTimeout(() => el.remove(), 260);
-  }, 6000);
-
-  if ('Notification' in window && Notification.permission === 'granted') {
-    new Notification(title, {
-      body: sub ? `${body} • ${sub}` : body,
-    });
-  }
-}
-
-function normalizeTrade(t) {
-  return {
-    id: t.trade_id ?? String(t.id ?? `${t.symbol ?? 'x'}-${t.created_at ?? ''}-${t.strike ?? ''}`),
-    symbol: t.symbol ?? '???',
-    side: t.option_type ?? t.side ?? '—',
-    strike: Number(t.strike ?? 0),
-    expiration: t.expiration ?? '—',
-    entryPrice: Number(t.entry_price ?? t.entryPrice ?? 0),
-    profitDollars: Number(t.profit_dollars ?? t.profitDollars ?? 0),
-    profitPercentage: Number(t.profit_percentage ?? t.profitPercentage ?? 0),
-    status: t.status ?? 'OPEN',
-    createdAt: t.created_at ?? t.createdAt ?? null,
-    updatedAt: t.updated_at ?? t.updatedAt ?? null,
-    highestPrice: t.highest_price ?? t.highestPrice ?? null,
-  };
+  list.innerHTML = trades.map(t => `
+    <div class="card">
+      <b>${t.symbol}</b> ${t.option_type} ${t.strike}<br>
+      Entry: ${t.entry_price}
+    </div>
+  `).join('');
 }
 
 async function fetchTrades() {
-  const res = await fetch(API_URL, { cache: 'no-store' });
-  if (!res.ok) throw new Error(`Upstream status ${res.status}`);
+  const res = await fetch(API_URL);
   const data = await res.json();
-  const rawTrades = Array.isArray(data) ? data : (data.trades || []);
-  return rawTrades.map(normalizeTrade);
+  return Array.isArray(data) ? data : data.trades;
 }
 
-async function pollTrades(showToastForNew = false) {
+async function poll() {
   try {
-    const nextTrades = await fetchTrades();
-    const nextIds = new Set(nextTrades.map(t => t.id));
+    const newTrades = await fetchTrades();
+    const newIds = new Set(newTrades.map(t => t.trade_id));
 
-    if (!initialLoadComplete) {
-      trades = nextTrades;
-      knownIds = nextIds;
-      initialLoadComplete = true;
-      updateHeader();
+    if (!initialLoad) {
+      trades = newTrades;
+      knownIds = newIds;
+      initialLoad = true;
       render();
-      document.getElementById('dot').className = 'dot live';
-      document.getElementById('connText').textContent = 'live (polling)';
       return;
     }
 
-    if (showToastForNew) {
-      for (const t of nextTrades) {
-        if (!knownIds.has(t.id)) {
-          toast(
-            `New trade: ${t.symbol}`,
-            `${t.side} ${fmtMoney(t.strike)} • entry ${fmtMoney(t.entryPrice)}`,
-            `${t.status || 'open'}`
-          );
-        }
+    newTrades.forEach(t => {
+      if (!knownIds.has(t.trade_id)) {
+        toast(`New trade: ${t.symbol}`);
       }
-    }
+    });
 
-    trades = nextTrades;
-    knownIds = nextIds;
-    updateHeader();
+    trades = newTrades;
+    knownIds = newIds;
     render();
-    document.getElementById('dot').className = 'dot live';
-    document.getElementById('connText').textContent = 'live (polling)';
-  } catch (err) {
-    document.getElementById('dot').className = 'dot err';
-    document.getElementById('connText').textContent = `error: ${err.message}`;
-    console.error(err);
-  }
-}
 
-function startPolling() {
-  if (pollingStarted) return;
-  pollingStarted = true;
-  pollTrades(false);
-  setInterval(() => pollTrades(true), 10000);
+  } catch (e) {
+    console.log(e);
+  }
 }
 
 function urlBase64ToUint8Array(base64String) {
   const padding = '='.repeat((4 - base64String.length % 4) % 4);
   const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
   const rawData = atob(base64);
-  return Uint8Array.from([...rawData].map(char => char.charCodeAt(0)));
+  return Uint8Array.from([...rawData].map(c => c.charCodeAt(0)));
 }
 
-async function subscribeForPush() {
-  if (!('serviceWorker' in navigator)) {
-    alert('This browser does not support service workers.');
-    return;
-  }
-  if (!('PushManager' in window)) {
-    alert('This browser does not support push notifications.');
-    return;
-  }
-
+async function subscribe() {
   const permission = await Notification.requestPermission();
-  if (permission !== 'granted') {
-    alert('Notifications were not allowed.');
-    return;
-  }
+  if (permission !== 'granted') return alert('Denied');
 
-  const registration = await navigator.serviceWorker.ready;
-  let subscription = await registration.pushManager.getSubscription();
+  const reg = await navigator.serviceWorker.ready;
 
-  if (!subscription) {
-    subscription = await registration.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+  let sub = await reg.pushManager.getSubscription();
+  if (!sub) {
+    sub = await reg.pushManager.subscribe({
+      userVisibleOnly:true,
+      applicationServerKey:urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
     });
   }
 
-  const res = await fetch('/api/push/subscribe', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ subscription }),
+  await fetch('/api/push/subscribe', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({subscription:sub})
   });
 
-  if (!res.ok) {
-    throw new Error(`Subscribe failed: ${res.status}`);
-  }
-
-  toast('Notifications enabled', 'This device is now subscribed.', '');
+  alert('Subscribed!');
 }
 
-document.getElementById('refreshBtn').addEventListener('click', async () => {
-  await pollTrades(true);
-  toast('Refresh complete', 'Pulled the latest Prisma feed', '');
-});
-
-document.getElementById('muteBtn').addEventListener('click', () => {
-  muted = !muted;
-  document.getElementById('muteBtn').textContent = `Toasts: ${muted ? 'off' : 'on'}`;
-});
-
-const notifyBtn = document.getElementById('notifyBtn');
-if (notifyBtn) {
-  notifyBtn.addEventListener('click', async () => {
-    try {
-      await subscribeForPush();
-    } catch (err) {
-      console.error(err);
-      alert(err.message || 'Failed to enable notifications');
-    }
-  });
-}
-
-document.getElementById('filterInput').addEventListener('input', render);
-
-document.querySelectorAll('.tab').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
-    btn.classList.add('active');
-    activeFilter = btn.dataset.filter;
-    render();
-  });
-});
+document.getElementById('notifyBtn').onclick = subscribe;
 
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('/sw.js').catch(console.error);
+  navigator.serviceWorker.register('/sw.js');
 }
 
-startPolling();
+poll();
+setInterval(poll, 10000);
 </script>
+
+</body>
+</html>
