@@ -723,7 +723,11 @@ document.querySelectorAll('.tab').forEach(btn => {
 
 document.addEventListener('click', ensureNotificationPermission, { once: true });
 document.addEventListener('touchstart', ensureNotificationPermission, { once: true, passive: true });
-
+  
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js').catch(console.error);
+}
+  
 startPolling();
 </script>
 </body>
