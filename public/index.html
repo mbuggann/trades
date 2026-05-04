@@ -418,8 +418,8 @@ let initialLoadComplete = false;
 let knownIds = new Set();
 
 const API_URL = '/api/prisma/trades';
-const VAPID_PUBLIC_KEY = 'BDr5TKBU6T64D9lz6YMVL74G1gJRrAvDXrkrr1vT3t28YPjSraZ3rEWgY-MoQYtQ5CJJuqGpiGgG7dyfzzXqRlA';
-  
+const VAPID_PUBLIC_KEY = 'PASTE_YOUR_PUBLIC_KEY_HERE';
+
 const fmtMoney = (n) => {
   const num = Number(n);
   if (!Number.isFinite(num)) return '—';
@@ -447,33 +447,6 @@ function statusClass(s) {
   return 'open';
 }
 
-function toNum(v) {
-  const n = Number(v);
-  return Number.isFinite(n) ? n : 0;
-}
-
-function normalizeTrade(t) {
-  return {
-    id: t.trade_id ?? String(t.id ?? `${t.symbol ?? 'x'}-${t.created_at ?? ''}-${t.strike ?? ''}`),
-    symbol: t.symbol ?? '???',
-    side: t.option_type ?? t.side ?? '—',
-    strike: toNum(t.strike),
-    expiration: t.expiration ?? '—',
-    entryPrice: toNum(t.entry_price ?? t.entryPrice),
-    profitPerContract: toNum(t.profit_per_contract ?? t.profitPerContract),
-    profitPercentage: toNum(t.profit_percentage ?? t.profitPercentage),
-    profitDollars: toNum(t.profit_dollars ?? t.profitDollars),
-    status: t.status ?? 'OPEN',
-    createdAt: t.created_at ?? t.createdAt ?? null,
-    updatedAt: t.updated_at ?? t.updatedAt ?? null,
-    highestPrice: t.highest_price ?? t.highestPrice ?? null,
-    highestPriceSource: t.highest_price_source ?? t.highestPriceSource ?? null,
-    signalSource: t.signal_source ?? t.signalSource ?? null,
-    channelName: t.channel_name ?? t.channelName ?? null,
-    raw: t,
-  };
-}
-
 function computeSummary() {
   const total = trades.length;
   const wins = trades.filter(t => statusClass(t.status) === 'win').length;
@@ -482,15 +455,12 @@ function computeSummary() {
     const st = statusClass(t.status);
     return st === 'open' || st === 'hold';
   }).length;
-
   const totalPnl = trades.reduce((sum, t) => sum + Number(t.profitDollars || 0), 0);
-
   return { total, wins, losses, open, totalPnl };
 }
 
 function updateHeader() {
   const summary = computeSummary();
-
   document.getElementById('total').textContent = summary.total;
   document.getElementById('wins').textContent = summary.wins;
   document.getElementById('losses').textContent = summary.losses;
@@ -505,7 +475,6 @@ function updateHeader() {
 
 function filteredTrades() {
   const q = document.getElementById('filterInput').value.trim().toLowerCase();
-
   return trades.filter(t => {
     const st = statusClass(t.status);
     const passFilter = activeFilter === 'all' || st === activeFilter;
@@ -520,7 +489,6 @@ function filteredTrades() {
       t.profitPercentage,
       t.highestPrice
     ].join(' ').toLowerCase();
-
     const passQuery = !q || hay.includes(q);
     return passFilter && passQuery;
   });
@@ -592,70 +560,57 @@ function render() {
           <div>Created: ${esc(t.createdAt ? new Date(t.createdAt).toLocaleString() : '—')}</div>
           <div>Updated: ${esc(t.updatedAt ? new Date(t.updatedAt).toLocaleString() : '—')}</div>
         </div>
-      </div>`;
+      </div>
+    `;
   }).join('');
 }
 
 function toast(title, body, sub) {
-  if (!muted) {
-    const el = document.createElement('div');
-    el.className = 'toast';
-    el.innerHTML = `
-      <div class="t1">${esc(title)}</div>
-      <div class="t2">${esc(body)}</div>
-      <div class="t3">${esc(sub || '')}</div>
-    `;
+  if (muted) return;
 
-    document.getElementById('toasts').prepend(el);
+  const el = document.createElement('div');
+  el.className = 'toast';
+  el.innerHTML = `
+    <div class="t1">${esc(title)}</div>
+    <div class="t2">${esc(body)}</div>
+    <div class="t3">${esc(sub || '')}</div>
+  `;
+  document.getElementById('toasts').prepend(el);
 
-    setTimeout(() => {
-      el.style.opacity = '0';
-      el.style.transform = 'translateX(16px)';
-      el.style.transition = 'all .25s ease';
-      setTimeout(() => el.remove(), 260);
-    }, 6000);
-  }
+  setTimeout(() => {
+    el.style.opacity = '0';
+    el.style.transform = 'translateX(16px)';
+    el.style.transition = 'all .25s ease';
+    setTimeout(() => el.remove(), 260);
+  }, 6000);
 
   if ('Notification' in window && Notification.permission === 'granted') {
-    try {
-      new Notification(title, {
-        body: [body, sub].filter(Boolean).join(' • '),
-      });
-    } catch {}
+    new Notification(title, { body: `${body}${sub ? ` • ${sub}` : ''}` });
   }
 }
 
-async function ensureNotificationPermission() {
-  if (!('Notification' in window)) return;
-  if (Notification.permission === 'default') {
-    try {
-      await Notification.requestPermission();
-    } catch {}
-  }
+function normalizeTrade(t) {
+  return {
+    id: t.trade_id ?? String(t.id ?? `${t.symbol ?? 'x'}-${t.created_at ?? ''}-${t.strike ?? ''}`),
+    symbol: t.symbol ?? '???',
+    side: t.option_type ?? t.side ?? '—',
+    strike: Number(t.strike ?? 0),
+    expiration: t.expiration ?? '—',
+    entryPrice: Number(t.entry_price ?? t.entryPrice ?? 0),
+    profitDollars: Number(t.profit_dollars ?? t.profitDollars ?? 0),
+    profitPercentage: Number(t.profit_percentage ?? t.profitPercentage ?? 0),
+    status: t.status ?? 'OPEN',
+    createdAt: t.created_at ?? t.createdAt ?? null,
+    updatedAt: t.updated_at ?? t.updatedAt ?? null,
+    highestPrice: t.highest_price ?? t.highestPrice ?? null,
+  };
 }
 
 async function fetchTrades() {
   const res = await fetch(API_URL, { cache: 'no-store' });
-  const text = await res.text();
-
-  if (!res.ok) {
-    throw new Error(`API ${res.status}: ${text.slice(0, 120)}`);
-  }
-
-  let data;
-  try {
-    data = JSON.parse(text);
-  } catch {
-    throw new Error(`Bad JSON: ${text.slice(0, 120)}`);
-  }
-
-  const rawTrades =
-    Array.isArray(data) ? data :
-    Array.isArray(data.trades) ? data.trades :
-    Array.isArray(data.data) ? data.data :
-    Array.isArray(data.items) ? data.items :
-    [];
-
+  if (!res.ok) throw new Error(`Upstream status ${res.status}`);
+  const data = await res.json();
+  const rawTrades = Array.isArray(data) ? data : (data.trades || []);
   return rawTrades.map(normalizeTrade);
 }
 
@@ -664,8 +619,19 @@ async function pollTrades(showToastForNew = false) {
     const nextTrades = await fetchTrades();
     const nextIds = new Set(nextTrades.map(t => t.id));
 
-    if (initialLoadComplete && showToastForNew) {
-      nextTrades.forEach(t => {
+    if (!initialLoadComplete) {
+      trades = nextTrades;
+      knownIds = nextIds;
+      initialLoadComplete = true;
+      updateHeader();
+      render();
+      document.getElementById('dot').className = 'dot live';
+      document.getElementById('connText').textContent = 'live (polling)';
+      return;
+    }
+
+    if (showToastForNew) {
+      for (const t of nextTrades) {
         if (!knownIds.has(t.id)) {
           toast(
             `New trade: ${t.symbol}`,
@@ -673,31 +639,32 @@ async function pollTrades(showToastForNew = false) {
             `${t.status || 'open'}`
           );
         }
-      });
+      }
     }
 
     trades = nextTrades;
     knownIds = nextIds;
-    initialLoadComplete = true;
-
     updateHeader();
     render();
-
     document.getElementById('dot').className = 'dot live';
-    document.getElementById('connText').textContent = `live (polling) - ${nextTrades.length} trades`;
+    document.getElementById('connText').textContent = 'live (polling)';
   } catch (err) {
     document.getElementById('dot').className = 'dot err';
     document.getElementById('connText').textContent = `error: ${err.message}`;
     console.error(err);
   }
 }
-  
+
+function startPolling() {
+  if (pollingStarted) return;
+  pollingStarted = true;
+  pollTrades(false);
+  setInterval(() => pollTrades(true), 10000);
+}
+
 function urlBase64ToUint8Array(base64String) {
   const padding = '='.repeat((4 - base64String.length % 4) % 4);
-  const base64 = (base64String + padding)
-    .replace(/-/g, '+')
-    .replace(/_/g, '/');
-
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
   const rawData = atob(base64);
   return Uint8Array.from([...rawData].map(char => char.charCodeAt(0)));
 }
@@ -707,7 +674,6 @@ async function subscribeForPush() {
     alert('This browser does not support service workers.');
     return;
   }
-
   if (!('PushManager' in window)) {
     alert('This browser does not support push notifications.');
     return;
@@ -741,26 +707,28 @@ async function subscribeForPush() {
 
   toast('Notifications enabled', 'This device is now subscribed.', '');
 }
-  
-function startPolling() {
-  if (pollingStarted) return;
-  pollingStarted = true;
-
-  pollTrades(false);
-  setInterval(() => pollTrades(true), 10000);
-}
 
 document.getElementById('refreshBtn').addEventListener('click', async () => {
-  await ensureNotificationPermission();
   await pollTrades(true);
   toast('Refresh complete', 'Pulled the latest Prisma feed', '');
 });
 
-document.getElementById('muteBtn').addEventListener('click', async () => {
-  await ensureNotificationPermission();
+document.getElementById('muteBtn').addEventListener('click', () => {
   muted = !muted;
   document.getElementById('muteBtn').textContent = `Toasts: ${muted ? 'off' : 'on'}`;
 });
+
+const notifyBtn = document.getElementById('notifyBtn');
+if (notifyBtn) {
+  notifyBtn.addEventListener('click', async () => {
+    try {
+      await subscribeForPush();
+    } catch (err) {
+      console.error(err);
+      alert(err.message || 'Failed to enable notifications');
+    }
+  });
+}
 
 document.getElementById('filterInput').addEventListener('input', render);
 
@@ -773,22 +741,10 @@ document.querySelectorAll('.tab').forEach(btn => {
   });
 });
 
-document.getElementById('notifyBtn').addEventListener('click', async () => {
-  try {
-    await subscribeForPush();
-  } catch (err) {
-    console.error(err);
-    alert(err.message || 'Failed to enable notifications');
-  }
-});
-
-document.addEventListener('click', ensureNotificationPermission, { once: true });
-document.addEventListener('touchstart', ensureNotificationPermission, { once: true, passive: true });
-  
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('/sw.js').catch(console.error);
 }
-  
+
 startPolling();
 </script>
 </body>
