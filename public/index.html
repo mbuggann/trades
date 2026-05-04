@@ -420,7 +420,7 @@
     let knownIds = new Set();
 
     const API_URL = '/api/prisma/trades';
-    const VAPID_PUBLIC_KEY = 'PASTE_YOUR_PUBLIC_KEY_HERE';
+    const VAPID_PUBLIC_KEY = 'BDr5TKBU6T64D9lz6YMVL74G1gJRrAvDXrkrr1vT3t28YPjSraZ3rEWgY-MoQYtQ5CJJuqGpiGgG7dyfzzXqRlA';
 
     const fmtMoney = (n) => {
       const num = Number(n);
@@ -628,7 +628,7 @@
     }
 
     async function subscribeForPush() {
-      if (!VAPID_PUBLIC_KEY || VAPID_PUBLIC_KEY.includes('PASTE_YOUR_PUBLIC_KEY_HERE')) {
+      if (!VAPID_PUBLIC_KEY || VAPID_PUBLIC_KEY.includes('BDr5TKBU6T64D9lz6YMVL74G1gJRrAvDXrkrr1vT3t28YPjSraZ3rEWgY-MoQYtQ5CJJuqGpiGgG7dyfzzXqRlA')) {
         alert('Paste your real VAPID public key into index.html first.');
         return;
       }
