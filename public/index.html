@@ -387,7 +387,7 @@
         <input id="filterInput" placeholder="Filter by symbol, side, strike, status..." />
       </div>
       <div class="tiny" style="margin-top:10px;">
-        Polling happens on the server every 5 seconds. New trades pop up instantly through Server-Sent Events.
+        Polling happens in the browser every 10 seconds. New trades pop up instantly through toasts.
       </div>
     </div>
 
@@ -410,18 +410,14 @@
 let trades = [];
 let activeFilter = 'all';
 let muted = false;
-let eventSource;
+let pollingStarted = false;
+
+const API_URL = 'https://api.prismagroup.online/api/trades/recent?limit=100&period=today';
 
 const fmtMoney = (n) => {
   const num = Number(n);
   if (!Number.isFinite(num)) return '—';
   return num < 0 ? `-$${Math.abs(num).toFixed(2)}` : `$${num.toFixed(2)}`;
-};
-
-const fmtPct = (n) => {
-  const num = Number(n);
-  if (!Number.isFinite(num)) return '—';
-  return `${num.toFixed(2)}%`;
 };
 
 const fmtPctSigned = (n) => {
@@ -443,6 +439,33 @@ function statusClass(s) {
   if (v.startsWith('LOSS')) return 'loss';
   if (v.includes('HOLD')) return 'hold';
   return 'open';
+}
+
+function toNum(v) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function normalizeTrade(t) {
+  return {
+    id: t.trade_id ?? String(t.id ?? `${t.symbol ?? 'x'}-${t.created_at ?? ''}-${t.strike ?? ''}`),
+    symbol: t.symbol ?? '???',
+    side: t.option_type ?? t.side ?? '—',
+    strike: toNum(t.strike),
+    expiration: t.expiration ?? '—',
+    entryPrice: toNum(t.entry_price ?? t.entryPrice),
+    profitPerContract: toNum(t.profit_per_contract ?? t.profitPerContract),
+    profitPercentage: toNum(t.profit_percentage ?? t.profitPercentage),
+    profitDollars: toNum(t.profit_dollars ?? t.profitDollars),
+    status: t.status ?? 'OPEN',
+    createdAt: t.created_at ?? t.createdAt ?? null,
+    updatedAt: t.updated_at ?? t.updatedAt ?? null,
+    highestPrice: t.highest_price ?? t.highestPrice ?? null,
+    highestPriceSource: t.highest_price_source ?? t.highestPriceSource ?? null,
+    signalSource: t.signal_source ?? t.signalSource ?? null,
+    channelName: t.channel_name ?? t.channelName ?? null,
+    raw: t,
+  };
 }
 
 function computeSummary() {
@@ -486,7 +509,10 @@ function filteredTrades() {
       t.strike,
       t.expiration,
       t.entryPrice,
-      t.status
+      t.status,
+      t.profitDollars,
+      t.profitPercentage,
+      t.highestPrice
     ].join(' ').toLowerCase();
 
     const passQuery = !q || hay.includes(q);
@@ -585,74 +611,54 @@ function toast(title, body, sub) {
   }, 6000);
 }
 
-async function loadSnapshot() {
-  const res = await fetch('/api/prisma/trades', { cache: 'no-store' });
+async function fetchTrades() {
+  const res = await fetch(API_URL, { cache: 'no-store' });
+  if (!res.ok) throw new Error(`Upstream status ${res.status}`);
+
   const data = await res.json();
-  trades = Array.isArray(data.trades) ? data.trades : [];
-  updateHeader();
-  render();
+  const rawTrades = Array.isArray(data) ? data : (data.trades || []);
+  return rawTrades.map(normalizeTrade);
 }
 
-function upsertTrade(t) {
-  const idx = trades.findIndex(x => x.id === t.id);
-  if (idx >= 0) trades[idx] = t;
-  else trades = [t, ...trades];
-}
+async function pollTrades(showToastForNew = false) {
+  try {
+    const previousIds = new Set(trades.map(t => t.id));
+    const nextTrades = await fetchTrades();
 
-function connect() {
-  if (eventSource) eventSource.close();
-  eventSource = new EventSource('/events');
+    if (showToastForNew) {
+      nextTrades.forEach(t => {
+        if (!previousIds.has(t.id)) {
+          toast(
+            `New trade: ${t.symbol}`,
+            `${t.side} ${fmtMoney(t.strike)} • entry ${fmtMoney(t.entryPrice)}`,
+            `${t.status || 'open'}`
+          );
+        }
+      });
+    }
 
-  eventSource.addEventListener('connected', () => {
-    document.getElementById('dot').className = 'dot live';
-    document.getElementById('connText').textContent = 'live';
-  });
-
-  eventSource.addEventListener('snapshot', (e) => {
-    const data = JSON.parse(e.data);
-    trades = Array.isArray(data.trades) ? data.trades : [];
+    trades = nextTrades;
     updateHeader();
     render();
-  });
 
-  eventSource.addEventListener('summary', () => {
-    updateHeader();
-  });
-
-  eventSource.addEventListener('new-trades', (e) => {
-    const data = JSON.parse(e.data);
-    if (Array.isArray(data.trades) && data.trades.length) {
-      data.trades.forEach(t => {
-        upsertTrade(t);
-        toast(
-          `New trade: ${t.symbol}`,
-          `${t.side} ${fmtMoney(t.strike)} • entry ${fmtMoney(t.entryPrice)}`,
-          `${t.status || 'open'}`
-        );
-      });
-      updateHeader();
-      render();
-    }
-  });
-
-  eventSource.addEventListener('updated-trades', (e) => {
-    const data = JSON.parse(e.data);
-    if (Array.isArray(data.trades) && data.trades.length) {
-      data.trades.forEach(t => upsertTrade(t));
-      updateHeader();
-      render();
-    }
-  });
-
-  eventSource.addEventListener('error', () => {
+    document.getElementById('dot').className = 'dot live';
+    document.getElementById('connText').textContent = 'live (polling)';
+  } catch (err) {
     document.getElementById('dot').className = 'dot err';
-    document.getElementById('connText').textContent = 'reconnecting...';
-  });
+    document.getElementById('connText').textContent = 'error';
+  }
+}
+
+function startPolling() {
+  if (pollingStarted) return;
+  pollingStarted = true;
+
+  pollTrades(true);
+  setInterval(() => pollTrades(true), 10000);
 }
 
 document.getElementById('refreshBtn').addEventListener('click', async () => {
-  await fetch('/api/prisma/refresh', { cache: 'no-store' });
-  await loadSnapshot();
+  await pollTrades(true);
   toast('Refresh complete', 'Pulled the latest Prisma feed', '');
 });
 
@@ -672,11 +678,7 @@ document.querySelectorAll('.tab').forEach(btn => {
   });
 });
 
-loadSnapshot().then(connect).catch(err => {
-  document.getElementById('dot').className = 'dot err';
-  document.getElementById('connText').textContent = 'error';
-  document.getElementById('list').innerHTML = `<div class="empty">Failed to load feed: ${esc(err.message)}</div>`;
-});
+startPolling();
 </script>
 </body>
 </html>
