@@ -1,0 +1,682 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>PRISMA Live Monitor</title>
+<style>
+  :root {
+    --bg:#0b0c10;
+    --panel:#14161c;
+    --panel2:#1b1f27;
+    --line:#242a35;
+    --text:#f1f5f9;
+    --muted:#94a3b8;
+    --green:#22c55e;
+    --red:#ef4444;
+    --amber:#f59e0b;
+    --blue:#38bdf8;
+  }
+
+  * { box-sizing:border-box; }
+  body {
+    margin:0;
+    background:var(--bg);
+    color:var(--text);
+    font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+  }
+
+  .wrap {
+    max-width:1280px;
+    margin:0 auto;
+    padding:24px;
+  }
+
+  .top {
+    display:flex;
+    justify-content:space-between;
+    gap:16px;
+    align-items:flex-start;
+    margin-bottom:20px;
+    flex-wrap:wrap;
+  }
+
+  h1 {
+    margin:0;
+    font-size:32px;
+    letter-spacing:-0.03em;
+  }
+
+  .sub {
+    color:var(--muted);
+    margin-top:8px;
+  }
+
+  .pill {
+    display:inline-flex;
+    align-items:center;
+    gap:8px;
+    border:1px solid var(--line);
+    border-radius:999px;
+    padding:8px 12px;
+    background:var(--panel);
+    color:var(--muted);
+    font-size:13px;
+  }
+
+  .dot {
+    width:10px;
+    height:10px;
+    border-radius:50%;
+    background:var(--muted);
+  }
+
+  .dot.live {
+    background:var(--green);
+    box-shadow:0 0 0 6px rgba(34,197,94,.12);
+  }
+
+  .dot.err { background:var(--red); }
+
+  .grid {
+    display:grid;
+    grid-template-columns:repeat(5,1fr);
+    gap:12px;
+    margin:20px 0;
+  }
+
+  @media (max-width: 1000px) {
+    .grid { grid-template-columns:repeat(2,1fr); }
+  }
+
+  .card {
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:18px;
+    padding:16px;
+  }
+
+  .label {
+    color:var(--muted);
+    font-size:11px;
+    text-transform:uppercase;
+    letter-spacing:.14em;
+    margin-bottom:10px;
+  }
+
+  .value {
+    font-size:28px;
+    font-weight:700;
+  }
+
+  .value.green { color:var(--green); }
+  .value.red { color:var(--red); }
+  .value.amber { color:var(--amber); }
+
+  .section {
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    gap:16px;
+    margin:26px 0 14px;
+  }
+
+  .section h2 {
+    margin:0;
+    font-size:16px;
+    letter-spacing:.08em;
+    text-transform:uppercase;
+    color:#dbe4f0;
+  }
+
+  .controls {
+    display:flex;
+    gap:10px;
+    flex-wrap:wrap;
+  }
+
+  button {
+    border:1px solid var(--line);
+    background:var(--panel);
+    color:var(--text);
+    border-radius:12px;
+    padding:10px 14px;
+    cursor:pointer;
+  }
+
+  button:hover { border-color:var(--blue); }
+
+  .tabs {
+    display:flex;
+    gap:8px;
+    flex-wrap:wrap;
+  }
+
+  .tab {
+    padding:8px 12px;
+    border-radius:999px;
+    border:1px solid var(--line);
+    background:var(--panel);
+    color:var(--muted);
+    cursor:pointer;
+  }
+
+  .tab.active {
+    color:var(--text);
+    border-color:var(--blue);
+    box-shadow:0 0 0 4px rgba(56,189,248,.08);
+  }
+
+  .list {
+    display:flex;
+    flex-direction:column;
+    gap:10px;
+  }
+
+  .trade {
+    position:relative;
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:18px;
+    padding:16px;
+    overflow:hidden;
+  }
+
+  .trade::before {
+    content:'';
+    position:absolute;
+    left:0;
+    top:0;
+    bottom:0;
+    width:4px;
+    background:var(--blue);
+  }
+
+  .trade.win::before { background:var(--green); }
+  .trade.loss::before { background:var(--red); }
+  .trade.hold::before { background:var(--amber); }
+
+  .head {
+    display:flex;
+    justify-content:space-between;
+    gap:12px;
+    align-items:flex-start;
+    margin-bottom:12px;
+  }
+
+  .sym {
+    font-size:22px;
+    font-weight:800;
+    display:flex;
+    align-items:center;
+    gap:10px;
+    flex-wrap:wrap;
+  }
+
+  .badge {
+    display:inline-flex;
+    padding:4px 8px;
+    border-radius:999px;
+    font-size:11px;
+    font-weight:700;
+    letter-spacing:.08em;
+  }
+
+  .call {
+    color:var(--green);
+    background:rgba(34,197,94,.12);
+  }
+
+  .put {
+    color:var(--red);
+    background:rgba(239,68,68,.12);
+  }
+
+  .status {
+    font-weight:700;
+    letter-spacing:.08em;
+    font-size:12px;
+    text-transform:uppercase;
+  }
+
+  .status.win { color:var(--green); }
+  .status.loss { color:var(--red); }
+  .status.open, .status.hold { color:var(--amber); }
+
+  .details {
+    display:grid;
+    grid-template-columns:repeat(4,1fr);
+    gap:10px;
+  }
+
+  @media (max-width: 900px) {
+    .details { grid-template-columns:repeat(2,1fr); }
+  }
+
+  .k {
+    color:var(--muted);
+    font-size:11px;
+    text-transform:uppercase;
+    letter-spacing:.12em;
+    margin-bottom:4px;
+  }
+
+  .v {
+    font-size:14px;
+    font-weight:700;
+    word-break:break-word;
+  }
+
+  .v.big {
+    font-size:16px;
+    font-weight:800;
+  }
+
+  .foot {
+    display:flex;
+    justify-content:space-between;
+    gap:12px;
+    align-items:center;
+    margin-top:12px;
+    padding-top:12px;
+    border-top:1px solid var(--line);
+    color:var(--muted);
+    font-size:12px;
+    flex-wrap:wrap;
+  }
+
+  .pnl.pos { color:var(--green); }
+  .pnl.neg { color:var(--red); }
+
+  .toastbox {
+    position:fixed;
+    right:20px;
+    top:20px;
+    display:flex;
+    flex-direction:column;
+    gap:10px;
+    z-index:99;
+  }
+
+  .toast {
+    width:min(380px, calc(100vw - 40px));
+    background:var(--panel2);
+    border:1px solid rgba(56,189,248,.35);
+    border-radius:16px;
+    padding:14px 16px;
+    box-shadow:0 16px 40px rgba(0,0,0,.35);
+  }
+
+  .toast .t1 {
+    color:var(--blue);
+    font-size:11px;
+    text-transform:uppercase;
+    letter-spacing:.16em;
+    margin-bottom:6px;
+  }
+
+  .toast .t2 {
+    font-size:15px;
+    font-weight:700;
+    margin-bottom:4px;
+  }
+
+  .toast .t3 {
+    color:var(--muted);
+    font-size:12px;
+    line-height:1.4;
+  }
+
+  .empty {
+    border:1px dashed var(--line);
+    border-radius:18px;
+    padding:32px;
+    text-align:center;
+    color:var(--muted);
+    background:rgba(255,255,255,.01);
+  }
+
+  .tiny {
+    font-size:12px;
+    color:var(--muted);
+  }
+
+  .inputrow {
+    display:flex;
+    gap:10px;
+    flex-wrap:wrap;
+  }
+
+  input {
+    background:var(--panel);
+    border:1px solid var(--line);
+    color:var(--text);
+    border-radius:12px;
+    padding:10px 12px;
+    min-width:280px;
+  }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="top">
+      <div>
+        <h1>PRISMA Live Monitor</h1>
+        <div class="sub">Real-time popups for new trades from today’s feed</div>
+      </div>
+      <div class="pill"><span class="dot" id="dot"></span><span id="connText">connecting...</span></div>
+    </div>
+
+    <div class="grid">
+      <div class="card"><div class="label">Total</div><div class="value" id="total">0</div></div>
+      <div class="card"><div class="label">Wins</div><div class="value green" id="wins">0</div></div>
+      <div class="card"><div class="label">Losses</div><div class="value red" id="losses">0</div></div>
+      <div class="card"><div class="label">Open</div><div class="value amber" id="open">0</div></div>
+      <div class="card"><div class="label">Today P&amp;L</div><div class="value" id="pnl">$0.00</div></div>
+    </div>
+
+    <div class="card" style="margin-bottom:18px;">
+      <div class="section" style="margin-top:0;">
+        <h2>Controls</h2>
+        <div class="controls">
+          <button id="refreshBtn">Refresh now</button>
+          <button id="muteBtn">Toasts: on</button>
+        </div>
+      </div>
+      <div class="inputrow">
+        <input id="filterInput" placeholder="Filter by symbol, side, strike, status..." />
+      </div>
+      <div class="tiny" style="margin-top:10px;">
+        Polling happens on the server every 5 seconds. New trades pop up instantly through Server-Sent Events.
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>Today's Trades</h2>
+      <div class="tabs">
+        <button class="tab active" data-filter="all">All</button>
+        <button class="tab" data-filter="win">Wins</button>
+        <button class="tab" data-filter="open">Open</button>
+        <button class="tab" data-filter="loss">Losses</button>
+      </div>
+    </div>
+
+    <div id="list" class="list"></div>
+  </div>
+
+  <div id="toasts" class="toastbox"></div>
+
+<script>
+let trades = [];
+let activeFilter = 'all';
+let muted = false;
+let eventSource;
+
+const fmtMoney = (n) => {
+  const num = Number(n);
+  if (!Number.isFinite(num)) return '—';
+  return num < 0 ? `-$${Math.abs(num).toFixed(2)}` : `$${num.toFixed(2)}`;
+};
+
+const fmtPct = (n) => {
+  const num = Number(n);
+  if (!Number.isFinite(num)) return '—';
+  return `${num.toFixed(2)}%`;
+};
+
+const fmtPctSigned = (n) => {
+  const num = Number(n);
+  if (!Number.isFinite(num)) return '—';
+  return `${num > 0 ? '+' : ''}${num.toFixed(2)}%`;
+};
+
+const esc = (s) =>
+  String(s ?? '')
+    .replaceAll('&','&amp;')
+    .replaceAll('<','&lt;')
+    .replaceAll('>','&gt;')
+    .replaceAll('"','&quot;');
+
+function statusClass(s) {
+  const v = String(s || '').toUpperCase();
+  if (v.startsWith('WIN')) return 'win';
+  if (v.startsWith('LOSS')) return 'loss';
+  if (v.includes('HOLD')) return 'hold';
+  return 'open';
+}
+
+function computeSummary() {
+  const total = trades.length;
+  const wins = trades.filter(t => statusClass(t.status) === 'win').length;
+  const losses = trades.filter(t => statusClass(t.status) === 'loss').length;
+  const open = trades.filter(t => {
+    const st = statusClass(t.status);
+    return st === 'open' || st === 'hold';
+  }).length;
+
+  const totalPnl = trades.reduce((sum, t) => sum + Number(t.profitDollars || 0), 0);
+
+  return { total, wins, losses, open, totalPnl };
+}
+
+function updateHeader() {
+  const summary = computeSummary();
+
+  document.getElementById('total').textContent = summary.total;
+  document.getElementById('wins').textContent = summary.wins;
+  document.getElementById('losses').textContent = summary.losses;
+  document.getElementById('open').textContent = summary.open;
+
+  const pnlEl = document.getElementById('pnl');
+  pnlEl.textContent = fmtMoney(summary.totalPnl);
+  pnlEl.className = 'value';
+  if (summary.totalPnl > 0) pnlEl.classList.add('green');
+  else if (summary.totalPnl < 0) pnlEl.classList.add('red');
+}
+
+function filteredTrades() {
+  const q = document.getElementById('filterInput').value.trim().toLowerCase();
+
+  return trades.filter(t => {
+    const st = statusClass(t.status);
+    const passFilter = activeFilter === 'all' || st === activeFilter;
+    const hay = [
+      t.symbol,
+      t.side,
+      t.strike,
+      t.expiration,
+      t.entryPrice,
+      t.status
+    ].join(' ').toLowerCase();
+
+    const passQuery = !q || hay.includes(q);
+    return passFilter && passQuery;
+  });
+}
+
+function render() {
+  const list = document.getElementById('list');
+  const rows = filteredTrades();
+
+  if (!rows.length) {
+    list.innerHTML = `<div class="empty">No trades match the current filter.</div>`;
+    return;
+  }
+
+  list.innerHTML = rows.map(t => {
+    const st = statusClass(t.status);
+    const pnlDollars = Number(t.profitDollars || 0);
+    const pnlPct = Number(t.profitPercentage || 0);
+    const maxOpp = t.highestPrice;
+
+    return `
+      <div class="trade ${st}">
+        <div class="head">
+          <div>
+            <div class="sym">
+              ${esc(t.symbol)}
+              <span class="badge ${String(t.side || '').toUpperCase() === 'CALL' ? 'call' : 'put'}">${esc(t.side)}</span>
+            </div>
+          </div>
+          <div class="status ${st}">${esc(t.status || 'open')}</div>
+        </div>
+
+        <div class="details">
+          <div>
+            <div class="k">P&amp;L $</div>
+            <div class="v big pnl ${pnlDollars >= 0 ? 'pos' : 'neg'}">${fmtMoney(pnlDollars)}</div>
+          </div>
+          <div>
+            <div class="k">P&amp;L %</div>
+            <div class="v big pnl ${pnlPct >= 0 ? 'pos' : 'neg'}">${fmtPctSigned(pnlPct)}</div>
+          </div>
+          <div>
+            <div class="k">Max Opp.</div>
+            <div class="v big">${maxOpp == null ? '—' : fmtMoney(maxOpp)}</div>
+          </div>
+          <div>
+            <div class="k">Entry Price</div>
+            <div class="v big">${fmtMoney(t.entryPrice)}</div>
+          </div>
+        </div>
+
+        <div class="details" style="margin-top:10px;">
+          <div>
+            <div class="k">Stock</div>
+            <div class="v big">${esc(t.symbol || '—')}</div>
+          </div>
+          <div>
+            <div class="k">Expiration</div>
+            <div class="v big">${esc(t.expiration || '—')}</div>
+          </div>
+          <div>
+            <div class="k">Strike</div>
+            <div class="v big">${fmtMoney(t.strike)}</div>
+          </div>
+          <div></div>
+        </div>
+
+        <div class="foot">
+          <div>Created: ${esc(t.createdAt ? new Date(t.createdAt).toLocaleString() : '—')}</div>
+          <div>Updated: ${esc(t.updatedAt ? new Date(t.updatedAt).toLocaleString() : '—')}</div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function toast(title, body, sub) {
+  if (muted) return;
+
+  const el = document.createElement('div');
+  el.className = 'toast';
+  el.innerHTML = `
+    <div class="t1">${esc(title)}</div>
+    <div class="t2">${esc(body)}</div>
+    <div class="t3">${esc(sub || '')}</div>
+  `;
+
+  document.getElementById('toasts').prepend(el);
+
+  setTimeout(() => {
+    el.style.opacity = '0';
+    el.style.transform = 'translateX(16px)';
+    el.style.transition = 'all .25s ease';
+    setTimeout(() => el.remove(), 260);
+  }, 6000);
+}
+
+async function loadSnapshot() {
+  const res = await fetch('/api/prisma/trades', { cache: 'no-store' });
+  const data = await res.json();
+  trades = Array.isArray(data.trades) ? data.trades : [];
+  updateHeader();
+  render();
+}
+
+function upsertTrade(t) {
+  const idx = trades.findIndex(x => x.id === t.id);
+  if (idx >= 0) trades[idx] = t;
+  else trades = [t, ...trades];
+}
+
+function connect() {
+  if (eventSource) eventSource.close();
+  eventSource = new EventSource('/events');
+
+  eventSource.addEventListener('connected', () => {
+    document.getElementById('dot').className = 'dot live';
+    document.getElementById('connText').textContent = 'live';
+  });
+
+  eventSource.addEventListener('snapshot', (e) => {
+    const data = JSON.parse(e.data);
+    trades = Array.isArray(data.trades) ? data.trades : [];
+    updateHeader();
+    render();
+  });
+
+  eventSource.addEventListener('summary', () => {
+    updateHeader();
+  });
+
+  eventSource.addEventListener('new-trades', (e) => {
+    const data = JSON.parse(e.data);
+    if (Array.isArray(data.trades) && data.trades.length) {
+      data.trades.forEach(t => {
+        upsertTrade(t);
+        toast(
+          `New trade: ${t.symbol}`,
+          `${t.side} ${fmtMoney(t.strike)} • entry ${fmtMoney(t.entryPrice)}`,
+          `${t.status || 'open'}`
+        );
+      });
+      updateHeader();
+      render();
+    }
+  });
+
+  eventSource.addEventListener('updated-trades', (e) => {
+    const data = JSON.parse(e.data);
+    if (Array.isArray(data.trades) && data.trades.length) {
+      data.trades.forEach(t => upsertTrade(t));
+      updateHeader();
+      render();
+    }
+  });
+
+  eventSource.addEventListener('error', () => {
+    document.getElementById('dot').className = 'dot err';
+    document.getElementById('connText').textContent = 'reconnecting...';
+  });
+}
+
+document.getElementById('refreshBtn').addEventListener('click', async () => {
+  await fetch('/api/prisma/refresh', { cache: 'no-store' });
+  await loadSnapshot();
+  toast('Refresh complete', 'Pulled the latest Prisma feed', '');
+});
+
+document.getElementById('muteBtn').addEventListener('click', () => {
+  muted = !muted;
+  document.getElementById('muteBtn').textContent = `Toasts: ${muted ? 'off' : 'on'}`;
+});
+
+document.getElementById('filterInput').addEventListener('input', render);
+
+document.querySelectorAll('.tab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+    btn.classList.add('active');
+    activeFilter = btn.dataset.filter;
+    render();
+  });
+});
+
+loadSnapshot().then(connect).catch(err => {
+  document.getElementById('dot').className = 'dot err';
+  document.getElementById('connText').textContent = 'error';
+  document.getElementById('list').innerHTML = `<div class="empty">Failed to load feed: ${esc(err.message)}</div>`;
+});
+</script>
+</body>
+</html>
