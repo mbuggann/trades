@@ -412,8 +412,8 @@ let activeFilter = 'all';
 let muted = false;
 let pollingStarted = false;
 
-const API_URL = 'https://api.prismagroup.online/api/trades/recent?limit=100&period=today';
-
+const API_URL = '/api/prisma/trades';
+  
 const fmtMoney = (n) => {
   const num = Number(n);
   if (!Number.isFinite(num)) return '—';
