@@ -419,7 +419,7 @@
     let initialLoadComplete = false;
     let knownIds = new Set();
 
-    const API_URL = '/api/prisma/trades';
+    const API_URL = 'https://api.prismagroup.online/api/trades/recent?limit=100&period=today';
     const VAPID_PUBLIC_KEY = 'BDr5TKBU6T64D9lz6YMVL74G1gJRrAvDXrkrr1vT3t28YPjSraZ3rEWgY-MoQYtQ5CJJuqGpiGgG7dyfzzXqRlA';
 
     const fmtMoney = (n) => {
