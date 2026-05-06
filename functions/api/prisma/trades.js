@@ -11,13 +11,14 @@ export async function onRequest() {
     return new Response(body, {
       status: res.status,
       headers: {
-        'Content-Type': 'application/json',
+        'Content-Type': res.headers.get('content-type') || 'application/json; charset=utf-8',
         'Cache-Control': 'no-store',
       },
     });
   } catch (err) {
-    return new Response(JSON.stringify({ error: 'Failed to fetch trades' }), {
-      status: 500,
-    });
+    return Response.json(
+      { error: err instanceof Error ? err.message : 'Unknown error' },
+      { status: 500 }
+    );
   }
 }
